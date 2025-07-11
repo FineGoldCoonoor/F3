@@ -8,7 +8,8 @@ let necklaceImg = null;
 let earringSrc = '';
 let necklaceSrc = '';
 let lastSnapshotDataURL = '';
-let lastLandmarks = null;
+
+let smoothedLandmarks = null;
 
 function loadImage(src) {
   return new Promise((resolve) => {
@@ -78,11 +79,20 @@ faceMesh.onResults((results) => {
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
   if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-    lastLandmarks = results.multiFaceLandmarks[0];
-  }
+    const newLandmarks = results.multiFaceLandmarks[0];
 
-  if (lastLandmarks) {
-    drawJewelry(lastLandmarks, canvasCtx);
+    // Smoothing logic
+    if (!smoothedLandmarks) {
+      smoothedLandmarks = newLandmarks;
+    } else {
+      smoothedLandmarks = smoothedLandmarks.map((prev, i) => ({
+        x: prev.x * 0.8 + newLandmarks[i].x * 0.2,
+        y: prev.y * 0.8 + newLandmarks[i].y * 0.2,
+        z: prev.z * 0.8 + newLandmarks[i].z * 0.2,
+      }));
+    }
+
+    drawJewelry(smoothedLandmarks, canvasCtx);
   }
 });
 
@@ -135,7 +145,7 @@ function drawJewelry(landmarks, ctx) {
 }
 
 function takeSnapshot() {
-  if (!lastLandmarks) {
+  if (!smoothedLandmarks) {
     alert("Face not detected. Please try again.");
     return;
   }
@@ -147,7 +157,7 @@ function takeSnapshot() {
   snapshotCanvas.height = videoElement.videoHeight;
   ctx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
 
-  drawJewelry(lastLandmarks, ctx);
+  drawJewelry(smoothedLandmarks, ctx);
 
   lastSnapshotDataURL = snapshotCanvas.toDataURL('image/png');
   document.getElementById('snapshot-preview').src = lastSnapshotDataURL;
