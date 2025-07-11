@@ -81,7 +81,6 @@ faceMesh.onResults((results) => {
   if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
     const newLandmarks = results.multiFaceLandmarks[0];
 
-    // Smoothing landmarks
     if (!smoothedLandmarks) {
       smoothedLandmarks = newLandmarks;
     } else {
@@ -117,11 +116,11 @@ function drawJewelry(landmarks, ctx) {
 
   const leftEar = {
     x: landmarks[132].x * canvasElement.width - 6,
-    y: landmarks[132].y * canvasElement.height - 10, // moved higher
+    y: landmarks[132].y * canvasElement.height - 16, // final upward fix
   };
   const rightEar = {
     x: landmarks[361].x * canvasElement.width + 6,
-    y: landmarks[361].y * canvasElement.height - 10, // moved higher
+    y: landmarks[361].y * canvasElement.height - 16, // final upward fix
   };
   const neck = {
     x: landmarks[152].x * canvasElement.width,
