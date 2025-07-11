@@ -1,218 +1,172 @@
-<script>
-const videoElement = document.getElementById('webcam');
-const canvasElement = document.getElementById('overlay');
-const canvasCtx = canvasElement.getContext('2d');
-
-let currentMode = null;
-let earringImg = null;
-let necklaceImg = null;
-let earringSrc = '';
-let necklaceSrc = '';
-let lastSnapshotDataURL = '';
-let lastStableLandmarks = null;
-let frameBuffer = 0;
-const maxBufferFrames = 5;
-
-function loadImage(src) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.src = src;
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-  });
-}
-
-function changeEarring(filename) {
-  earringSrc = `earrings/${filename}`;
-  loadImage(earringSrc).then(img => {
-    if (img) earringImg = img;
-  });
-}
-
-function changeNecklace(filename) {
-  necklaceSrc = `necklaces/${filename}`;
-  loadImage(necklaceSrc).then(img => {
-    if (img) necklaceImg = img;
-  });
-}
-
-function selectMode(mode) {
-  currentMode = mode;
-  document.querySelectorAll('.options-group').forEach(group => group.style.display = 'none');
-  if (mode) {
-    document.getElementById(`${mode}-options`).style.display = 'flex';
-  }
-}
-
-function insertJewelryOptions(type, containerId, startIndex, endIndex) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = '';
-  for (let i = startIndex; i <= endIndex; i++) {
-    const filename = `${type}${i}.png`;
-    const btn = document.createElement('button');
-    const img = document.createElement('img');
-    img.src = `${type}s/${filename}`;
-    btn.appendChild(img);
-    btn.onclick = () => {
-      if (type === 'earring') changeEarring(filename);
-      if (type === 'necklace') changeNecklace(filename);
-    };
-    container.appendChild(btn);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  insertJewelryOptions('earring', 'earring-options', 1, 15);
-  insertJewelryOptions('necklace', 'necklace-options', 1, 24);
-});
-
-const faceMesh = new FaceMesh({
-  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-});
-
-faceMesh.setOptions({
-  maxNumFaces: 1,
-  refineLandmarks: true,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.6
-});
-
-faceMesh.onResults((results) => {
-  const detected = results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0;
-
-  if (detected) {
-    const newLandmarks = results.multiFaceLandmarks[0];
-
-    if (!lastStableLandmarks || areLandmarksStable(newLandmarks, lastStableLandmarks)) {
-      lastStableLandmarks = newLandmarks;
-      frameBuffer = maxBufferFrames;
-    } else {
-      frameBuffer = Math.max(frameBuffer - 1, 0);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jewelry Try-On</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
     }
-  } else {
-    frameBuffer = Math.max(frameBuffer - 1, 0);
+    .options-group {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      display: flex;
+      gap: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 10px;
+      border-radius: 10px;
+      z-index: 10;
+    }
+    .options-group img {
+      width: 40px;
+      height: 40px;
+    }
+  </style>
+</head>
+<body>
+
+<video id="webcam" autoplay muted playsinline></video>
+<canvas id="overlay"></canvas>
+
+<div id="earring-options" class="options-group"></div>
+<div id="necklace-options" class="options-group"></div>
+
+<script type="module">
+  import { FaceMesh } from 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
+
+  const video = document.getElementById('webcam');
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+
+  let currentMode = 'earring';
+  let earringImg = null, necklaceImg = null;
+  let lastLandmarks = null;
+  let frameBuffer = 0, maxBuffer = 5;
+
+  function loadImage(src) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
   }
 
-  canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+  function drawJewelry(landmarks) {
+    if (!landmarks || (!earringImg && !necklaceImg)) return;
+    const w = canvas.width, h = canvas.height;
 
-  if (frameBuffer > 0 && lastStableLandmarks) {
-    drawJewelry(lastStableLandmarks, canvasCtx);
-  }
-});
+    const leftEar = { x: landmarks[132].x * w, y: landmarks[132].y * h + 18 };
+    const rightEar = { x: landmarks[361].x * w, y: landmarks[361].y * h + 18 };
+    const neck = { x: landmarks[152].x * w, y: landmarks[152].y * h + 42 };
 
-const camera = new Camera(videoElement, {
-  onFrame: async () => {
-    await faceMesh.send({ image: videoElement });
-  },
-  width: 1280,
-  height: 720
-});
+    if (currentMode === 'earring' && earringImg?.complete) {
+      const scale = 0.04;
+      const ew = earringImg.width * scale;
+      const eh = earringImg.height * scale;
+      ctx.drawImage(earringImg, leftEar.x - ew / 2, leftEar.y, ew, eh);
+      ctx.drawImage(earringImg, rightEar.x - ew / 2, rightEar.y, ew, eh);
+    }
 
-videoElement.addEventListener('loadedmetadata', () => {
-  canvasElement.width = videoElement.videoWidth;
-  canvasElement.height = videoElement.videoHeight;
-});
-
-camera.start();
-
-function areLandmarksStable(newL, oldL, threshold = 0.004) {
-  if (!newL || !oldL) return false;
-  let totalDiff = 0;
-  for (let i = 0; i < newL.length; i++) {
-    totalDiff += Math.abs(newL[i].x - oldL[i].x);
-    totalDiff += Math.abs(newL[i].y - oldL[i].y);
-  }
-  return totalDiff / newL.length < threshold;
-}
-
-function drawJewelry(landmarks, ctx) {
-  if (!landmarks || (!earringImg && !necklaceImg)) return;
-
-  const earringScale = 0.04;
-  const necklaceScale = 0.1;
-
-  const leftEar = {
-    x: landmarks[132].x * canvasElement.width,
-    y: landmarks[132].y * canvasElement.height + 18,
-  };
-  const rightEar = {
-    x: landmarks[361].x * canvasElement.width,
-    y: landmarks[361].y * canvasElement.height + 18,
-  };
-  const neck = {
-    x: landmarks[152].x * canvasElement.width,
-    y: landmarks[152].y * canvasElement.height + 42,
-  };
-
-  if (currentMode === 'earring' && earringImg?.complete) {
-    const width = earringImg.width * earringScale;
-    const height = earringImg.height * earringScale;
-
-    ctx.drawImage(earringImg, leftEar.x - width / 2, leftEar.y, width, height);
-    ctx.drawImage(earringImg, rightEar.x - width / 2, rightEar.y, width, height);
+    if (currentMode === 'necklace' && necklaceImg?.complete) {
+      const scale = 0.1;
+      const nw = necklaceImg.width * scale;
+      const nh = necklaceImg.height * scale;
+      ctx.drawImage(necklaceImg, neck.x - nw / 2, neck.y, nw, nh);
+    }
   }
 
-  if (currentMode === 'necklace' && necklaceImg?.complete) {
-    const width = necklaceImg.width * necklaceScale;
-    const height = necklaceImg.height * necklaceScale;
-
-    ctx.drawImage(necklaceImg, neck.x - width / 2, neck.y, width, height);
-  }
-}
-
-function takeSnapshot() {
-  if (!lastStableLandmarks) {
-    alert("Face not detected. Please try again.");
-    return;
+  function areLandmarksStable(newL, oldL, threshold = 0.004) {
+    if (!newL || !oldL) return false;
+    let totalDiff = 0;
+    for (let i = 0; i < newL.length; i++) {
+      totalDiff += Math.abs(newL[i].x - oldL[i].x);
+      totalDiff += Math.abs(newL[i].y - oldL[i].y);
+    }
+    return totalDiff / newL.length < threshold;
   }
 
-  const snapshotCanvas = document.createElement('canvas');
-  const ctx = snapshotCanvas.getContext('2d');
+  const faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+  });
 
-  snapshotCanvas.width = videoElement.videoWidth;
-  snapshotCanvas.height = videoElement.videoHeight;
-  ctx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+  });
 
-  drawJewelry(lastStableLandmarks, ctx);
+  faceMesh.onResults(results => {
+    const detected = results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0;
+    if (detected) {
+      const newLandmarks = results.multiFaceLandmarks[0];
+      if (!lastLandmarks || areLandmarksStable(newLandmarks, lastLandmarks)) {
+        lastLandmarks = newLandmarks;
+        frameBuffer = maxBuffer;
+      } else {
+        frameBuffer = Math.max(0, frameBuffer - 1);
+      }
+    } else {
+      frameBuffer = Math.max(0, frameBuffer - 1);
+    }
 
-  lastSnapshotDataURL = snapshotCanvas.toDataURL('image/png');
-  document.getElementById('snapshot-preview').src = lastSnapshotDataURL;
-  document.getElementById('snapshot-modal').style.display = 'block';
-}
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (frameBuffer > 0 && lastLandmarks) {
+      drawJewelry(lastLandmarks);
+    }
+  });
 
-function saveSnapshot() {
-  const link = document.createElement('a');
-  link.href = lastSnapshotDataURL;
-  link.download = `jewelry-tryon-${Date.now()}.png`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
 
-function shareSnapshot() {
-  if (navigator.share) {
-    fetch(lastSnapshotDataURL)
-      .then(res => res.blob())
-      .then(blob => {
-        const file = new File([blob], 'jewelry-tryon.png', { type: 'image/png' });
-        navigator.share({
-          title: 'Jewelry Try-On',
-          text: 'Check out my look!',
-          files: [file]
-        });
-      })
-      .catch(console.error);
-  } else {
-    alert('Sharing not supported on this browser.');
+      video.onloadedmetadata = () => {
+        video.play();
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const render = async () => {
+          await faceMesh.send({ image: video });
+          requestAnimationFrame(render);
+        };
+        render();
+      };
+    } catch (err) {
+      alert("Camera access denied or unavailable.");
+      console.error(err);
+    }
   }
-}
 
-function closeSnapshotModal() {
-  document.getElementById('snapshot-modal').style.display = 'none';
-}
+  function setupJewelryUI() {
+    const earringOptions = document.getElementById('earring-options');
+    const necklaceOptions = document.getElementById('necklace-options');
 
-function toggleInfoModal() {
-  const modal = document.getElementById('info-modal');
-  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
-}
-</script>
+    for (let i = 1; i <= 5; i++) {
+      const eBtn = document.createElement('button');
+      const eImg = document.createElement('img');
+      eImg.src = `earrings/earring${i}.png`;
+      eBtn.appendChild(eImg);
+      eBtn.onclick = () => {
+        currentMode = 'earring';
+        loadImage(eImg.src).then(img => earringImg = img);
+      };
+      earringOptions.appendChild(eBtn);
+    }
+
+    for (let i = 1; i <= 5; i++) {
+      const nBtn = document.createElement('button');
+      const nImg = document.createElement('img');
+      nImg.src = `necklaces/necklace${i}.png`;
+      nBtn.appendChild(nImg);
+      nBtn.onclick = () => {
+        currentMode = 'necklace';
+        loadImage(nImg.src).then(img => necklaceImg = img);
+      };
+      neckla
