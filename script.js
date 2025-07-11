@@ -81,7 +81,7 @@ faceMesh.onResults((results) => {
   if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
     const newLandmarks = results.multiFaceLandmarks[0];
 
-    // Smoothing logic
+    // Smoothing
     if (!smoothedLandmarks) {
       smoothedLandmarks = newLandmarks;
     } else {
@@ -112,8 +112,8 @@ videoElement.addEventListener('loadedmetadata', () => {
 camera.start();
 
 function drawJewelry(landmarks, ctx) {
-  const earringScale = 0.04;
-  const necklaceScale = 0.1;
+  const earringScale = 0.07;     // Increased from 0.04
+  const necklaceScale = 0.14;    // Increased from 0.1
 
   const leftEar = {
     x: landmarks[132].x * canvasElement.width,
